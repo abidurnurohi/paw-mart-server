@@ -5,9 +5,45 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 3000;
 
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./paw-mart-firebase-adminsdk-eceead1def.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+const logger = (req, res, next) => {
+    console.log('logging...');
+    next();
+}
+
+const verifyToken = async(req, res, next) => {
+    console.log('verifying token...', req.headers.authorization);
+    if(!req.headers.authorization){
+        return res.status(401).send({message: 'unauthorized access'});
+    }
+    const token = req.headers.authorization.split(' ')[1];
+    if(!token){
+        return res.status(403).send({message: 'forbidden access'});
+    }
+
+    try{
+        const tokenInfo = await admin.auth().verifyIdToken(token);
+        req.token_email = tokenInfo.email;
+        console.log('token info', tokenInfo);
+        next();
+    }
+    catch{
+        return res.status(403).send({message: 'forbidden access'});
+    }
+
+}
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.yt6dthx.mongodb.net/?appName=Cluster0`;
 
@@ -41,7 +77,7 @@ async function run() {
             const query = { email: email };
             const existingUser = await usersCollection.findOne(query);
             if (existingUser) {
-                res.send({message: 'User already exists'});
+                res.send({ message: 'User already exists' });
             }
             else {
                 const result = await usersCollection.insertOne(newUser);
@@ -65,8 +101,16 @@ async function run() {
             res.send(result);
         });
 
+        //route to get all products for a specific user
+        app.get('/products-by-email/:email', async (req, res) => {
+            const email = req.params.email;
+            const result = await productsCollection.find({ email }).toArray();
+            res.send(result);
+        });
+
+
         app.get('/latest-products', async (req, res) => {
-            const cursor = productsCollection.find().sort({date : -1}).limit(6);
+            const cursor = productsCollection.find().sort({ date: -1 }).limit(6);
             const result = await cursor.toArray();
             res.send(result);
         });
@@ -84,6 +128,29 @@ async function run() {
             const result = await productsCollection.insertOne(newProduct);
             res.send(result);
         });
+
+        //update a particular product
+        app.put('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedProduct = req.body;
+
+            const query = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: updatedProduct
+            };
+
+            const result = await productsCollection.updateOne(query, updateDoc);
+            res.send(result);
+        });
+
+        //delete a particular product
+        app.delete('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
+            res.send(result);
+        })
+
 
         app.patch('/products/:id', async (req, res) => {
             const id = req.params.id;
@@ -108,10 +175,14 @@ async function run() {
 
 
         //orders api
-        app.get('/orders', async (req, res) => {
+        app.get('/orders', logger, verifyToken, async (req, res) => {
             const email = req.query.email;
             const query = {};
+
             if (email) {
+                if (email !== req.token_email){
+                    return res.status(403).send({message: 'forbidden access'});
+                }
                 query.email = email;
             }
 
