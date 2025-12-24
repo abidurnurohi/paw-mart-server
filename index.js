@@ -28,13 +28,12 @@ const verifyToken = async(req, res, next) => {
     }
     const token = req.headers.authorization.split(' ')[1];
     if(!token){
-        return res.status(401).send({message: 'access denied'});
+        return res.status(401).send({message: 'unauthorized access'});
     }
 
     try{
         const tokenInfo = await admin.auth().verifyIdToken(token);
         req.token_email = tokenInfo.email;
-        console.log('token info', tokenInfo);
         next();
     }
     catch{
@@ -120,7 +119,6 @@ async function run() {
 
         app.post('/products', async (req, res) => {
             const newProduct = req.body;
-            console.log(newProduct);
             const result = await productsCollection.insertOne(newProduct);
             res.send(result);
         });
@@ -189,7 +187,6 @@ async function run() {
 
         app.post('/orders', async (req, res) => {
             const order = req.body;
-            console.log(order);
             const result = await ordersCollection.insertOne(order);
             res.send(result);
         });
