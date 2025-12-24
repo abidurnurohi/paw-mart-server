@@ -85,8 +85,6 @@ async function run() {
 
         //products api
         app.get('/products', async (req, res) => {
-
-            console.log(req.query);
             const email = req.query.email;
             const query = {};
             if (email) {
